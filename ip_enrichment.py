@@ -556,6 +556,11 @@ class IPEnricher:
         # Intentar cache primero
         cached = self.cache.get(ip)
         if cached:
+            if skip_virustotal:
+                # Forzar que VT se muestre como "no consultado" para
+                # que el dashboard ofrezca el botón de consulta on-demand
+                cached["virustotal"] = {"error": "not_queried"}
+                cached["risk"] = classify_risk(cached)
             self.results[ip] = cached
             return cached
 
