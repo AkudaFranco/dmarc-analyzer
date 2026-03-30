@@ -135,13 +135,19 @@ def build_ip_panel_html(ip_enrichment_data):
 /* ── Country flag (emoji) ── */
 .cflag{{margin-right:3px}}
 
-/* ── Botón VT bajo demanda ── */
-.vt-demand-btn{{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.2);
+/* ── Botones bajo demanda (VT, Shodan) ── */
+.vt-demand-btn,.shodan-demand-btn{{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.2);
   color:var(--cy);font-family:var(--mono);font-size:11px;padding:10px 16px;
   border-radius:8px;cursor:pointer;width:100%;transition:all .2s}}
-.vt-demand-btn:hover{{background:rgba(34,211,238,.15);border-color:rgba(34,211,238,.4);
+.vt-demand-btn:hover,.shodan-demand-btn:hover{{background:rgba(34,211,238,.15);border-color:rgba(34,211,238,.4);
   box-shadow:0 0 12px rgba(34,211,238,.1)}}
-.vt-demand-btn:disabled{{cursor:wait;opacity:.6}}
+.vt-demand-btn:disabled,.shodan-demand-btn:disabled{{cursor:wait;opacity:.6}}
+
+/* ── Puertos Shodan ── */
+.port-badge{{display:inline-block;padding:2px 7px;margin:2px;border-radius:4px;
+  font-family:var(--mono);font-size:10px;font-weight:600}}
+.port-badge.safe{{background:rgba(74,222,128,.12);color:var(--gr);border:1px solid rgba(74,222,128,.2)}}
+.port-badge.danger{{background:rgba(248,113,113,.12);color:var(--rd);border:1px solid rgba(248,113,113,.2)}}
 </style>
 
 <!-- Panel overlay -->
@@ -156,6 +162,8 @@ def build_ip_panel_html(ip_enrichment_data):
 const IP_DATA = {data_json};
 
 // ── Mapa de categorías AbuseIPDB ──
+const DANGEROUS_PORTS = new Set([21,23,25,135,139,445,1433,1521,3306,3389,5432,5900,6379,27017]);
+
 const ABUSE_CATS = {{
   1:"DNS Compromise",2:"DNS Poisoning",3:"Fraud Orders",4:"DDoS",5:"FTP Brute-Force",
   6:"Ping of Death",7:"Phishing",8:"Fraud VoIP",9:"Open Proxy",10:"Web Spam",
@@ -351,6 +359,60 @@ function openIPPanel(ip) {{
     </div>`;
   }}
 
+  // ── Shodan ──
+  const sh=d.shodan||{{}};
+  if(sh.ports && sh.ports.length && !sh.error) {{
+    const portBadges=sh.ports.map(p=>{{
+      const cls=DANGEROUS_PORTS.has(p)?'danger':'safe';
+      return `<span class="port-badge ${{cls}}">${{p}}</span>`;
+    }}).join('');
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔍 Puertos abiertos <span class="ipp-src">Shodan</span></div>
+      <div style="margin-bottom:8px">${{portBadges}}</div>
+      <div class="ipp-grid">
+        ${{_item('Organización',sh.org||'—')}}
+        ${{_item('ISP',sh.isp||'—')}}
+        ${{_item('SO',sh.os||'—')}}
+        ${{_item('Hostnames',(sh.hostnames||[]).join(', ')||'—')}}
+      </div>`;
+    if(sh.vulns&&sh.vulns.length) {{
+      html+=`<div style="margin-top:8px">
+        <div class="ipp-label" style="color:var(--rd)">CVEs detectados (${{sh.vulns.length}})</div>
+        <div class="ipp-tags">${{sh.vulns.map(v=>
+          `<span class="ipp-tag" style="background:rgba(248,113,113,.12);color:var(--rd);border-color:rgba(248,113,113,.2)">${{v}}</span>`).join('')}}</div>
+      </div>`;
+    }}
+    if(sh.last_update) {{
+      html+=`<div style="font-family:var(--mono);font-size:9px;color:var(--mt);margin-top:6px;text-align:right">
+        Último escaneo: ${{sh.last_update.split('T')[0]}}</div>`;
+    }}
+    html+=`</div>`;
+  }} else if(sh.error==='not_found') {{
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔍 Puertos abiertos <span class="ipp-src">Shodan</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--mt);text-align:center;padding:8px">
+        IP no encontrada en Shodan (sin escaneos recientes)
+      </div>
+    </div>`;
+  }} else if(!sh.error || sh.error==='not_queried') {{
+    const sBtnId='sh-btn-'+ip.replace(/\\./g,'-');
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔍 Puertos abiertos <span class="ipp-src">Shodan</span></div>
+      <div id="sh-status-${{sBtnId}}" style="text-align:center">
+        <button id="${{sBtnId}}" class="shodan-demand-btn" onclick="queryShodan('${{ip}}')">
+          🔍 Consultar Shodan
+        </button>
+      </div>
+    </div>`;
+  }} else if(sh.error==='no_key') {{
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔍 Puertos abiertos <span class="ipp-src">Shodan</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--mt);text-align:center;padding:8px">
+        Sin API key de Shodan configurada
+      </div>
+    </div>`;
+  }}
+
   panel.innerHTML=html;
   $('ip-overlay').classList.add('open');
   $('ip-panel').classList.add('open');
@@ -400,6 +462,42 @@ function queryVirusTotal(ip) {{
       if(statusEl) {{
         const hint=location.protocol==='file:'?'Ejecuta sin --no-open para consultas bajo demanda':'Servidor no disponible';
         statusEl.innerHTML+=`<div style="color:var(--rd);font-family:var(--mono);font-size:9px;margin-top:4px">${{hint}}</div>`;
+      }}
+    }});
+}}
+
+// ── Consulta Shodan bajo demanda ──
+function queryShodan(ip) {{
+  const btnId='sh-btn-'+ip.replace(/\\./g,'-');
+  const btn=document.getElementById(btnId);
+  if(btn) {{
+    btn.disabled=true;
+    btn.textContent='Consultando...';
+    btn.style.opacity='0.6';
+  }}
+  fetch('/api/shodan-lookup?ip='+encodeURIComponent(ip))
+    .then(r => {{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }})
+    .then(data => {{
+      if(data.error && data.error!=='not_found') {{
+        const statusEl=document.getElementById('sh-status-'+btnId);
+        let msg='Error al consultar Shodan';
+        if(data.error==='no_key') msg='Sin API key de Shodan configurada';
+        else if(data.error==='invalid_key') msg='API key de Shodan inválida';
+        else if(data.error==='rate_limited') msg='Rate limited — inténtalo de nuevo en unos segundos';
+        if(statusEl) statusEl.innerHTML=`<div style="color:var(--yw);font-family:var(--mono);font-size:10px;padding:8px">${{msg}}</div>`;
+        return;
+      }}
+      IP_DATA[ip]=data;
+      openIPPanel(ip);
+    }})
+    .catch(err => {{
+      if(btn) {{
+        btn.disabled=false;
+        btn.textContent='Error — Reintentar';
+        btn.style.opacity='1';
       }}
     }});
 }}
@@ -501,7 +599,7 @@ def inject_ip_panel(html_content, ip_enrichment_data):
 #  SERVIDOR LOCAL CON API VT ON-DEMAND
 # ══════════════════════════════════════════════════════════════════
 
-_vt_lock = threading.Lock()
+_api_lock = threading.Lock()
 
 
 def serve_and_open_with_api(html_path, enricher):
@@ -521,19 +619,22 @@ def serve_and_open_with_api(html_path, enricher):
 
         def do_GET(self):
             parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
             if parsed.path == "/api/vt-lookup":
-                self._handle_vt_lookup(parse_qs(parsed.query))
+                self._handle_lookup(qs, enricher.enrich_ip_virustotal)
+            elif parsed.path == "/api/shodan-lookup":
+                self._handle_lookup(qs, enricher.enrich_ip_shodan)
             else:
                 super().do_GET()
 
-        def _handle_vt_lookup(self, params):
+        def _handle_lookup(self, params, lookup_fn):
             ip = params.get("ip", [""])[0].strip()
             if not ip:
                 self._json_response(400, {"error": "missing_ip"})
                 return
 
-            with _vt_lock:
-                result = enricher.enrich_ip_virustotal(ip)
+            with _api_lock:
+                result = lookup_fn(ip)
 
             self._json_response(200, result)
 
@@ -553,8 +654,10 @@ def serve_and_open_with_api(html_path, enricher):
     srv = http.server.HTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{port}/{html_path.name}"
+    base = url.rsplit("/", 1)[0]
     print(f"\n  🌐 Servidor : {url}")
-    print(f"  🔬 API VT   : {url.rsplit('/', 1)[0]}/api/vt-lookup?ip=<IP>")
+    print(f"  🔬 API VT   : {base}/api/vt-lookup?ip=<IP>")
+    print(f"  🔍 API Shodan: {base}/api/shodan-lookup?ip=<IP>")
     print(f"  🔥 Abriendo navegador...\n")
     time.sleep(0.3)
     webbrowser.open(url)

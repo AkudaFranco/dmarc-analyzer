@@ -56,6 +56,7 @@ DEFAULT_CONFIG = {
     "abuseipdb_key":   "",
     "ipinfo_token":    "",
     "virustotal_key":  "",
+    "shodan_key":      "",
 
     # ── Opciones de consulta ──────────────────────────────────
     "abuseipdb_max_age_days": 90,     # Ventana de reportes en AbuseIPDB
@@ -76,6 +77,7 @@ DEFAULT_CONFIG = {
     "delay_abuseipdb":   0.2,
     "delay_ipinfo":      0.1,
     "delay_virustotal":  16,  # 4 req/min → ~15s entre cada una
+    "delay_shodan":      1,
 }
 
 
@@ -402,9 +404,77 @@ def query_virustotal(ip, api_key):
         return {"error": str(e)}
 
 
+def query_shodan(ip, api_key):
+    """
+    Consulta Shodan API para puertos abiertos y servicios de una IP.
+
+    Endpoint: GET https://api.shodan.io/shodan/host/{ip}?key={key}&minify=true
+    Auth:     API key como query param
+
+    Devuelve:
+    {
+        "ports":       [int, ...] (puertos abiertos),
+        "hostnames":   [str, ...],
+        "org":         str (organización),
+        "isp":         str,
+        "os":          str (sistema operativo detectado),
+        "vulns":       [str, ...] (CVEs si disponibles),
+        "tags":        [str, ...],
+        "last_update": str (fecha del último escaneo),
+        "error":       str
+    }
+    """
+    if not api_key or not REQUESTS_OK:
+        return {"error": "no_key" if not api_key else "no_requests"}
+
+    url = f"https://api.shodan.io/shodan/host/{ip}"
+    params = {"key": api_key, "minify": "true"}
+
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        if resp.status_code == 404:
+            return {
+                "ports": [], "hostnames": [], "org": "", "isp": "",
+                "os": "", "vulns": [], "tags": [], "last_update": "",
+                "error": "not_found",
+            }
+        if resp.status_code == 401:
+            return {"error": "invalid_key"}
+        if resp.status_code == 429:
+            return {"error": "rate_limited"}
+        if resp.status_code != 200:
+            return {"error": f"http_{resp.status_code}"}
+
+        d = resp.json()
+        return {
+            "ports":       d.get("ports", []),
+            "hostnames":   d.get("hostnames", []),
+            "org":         d.get("org", ""),
+            "isp":         d.get("isp", ""),
+            "os":          d.get("os") or "",
+            "vulns":       sorted(d.get("vulns", [])) if d.get("vulns") else [],
+            "tags":        d.get("tags", []),
+            "last_update": d.get("last_update", ""),
+            "error":       "",
+        }
+
+    except requests.exceptions.Timeout:
+        return {"error": "timeout"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ═════════════════════════════════════════════════════════════════
 #  CLASIFICACIÓN DE RIESGO
 # ═════════════════════════════════════════════════════════════════
+
+# Puertos considerados peligrosos si están abiertos
+DANGEROUS_PORTS = {
+    21: "FTP", 23: "Telnet", 25: "SMTP", 135: "MSRPC", 139: "NetBIOS",
+    445: "SMB", 1433: "MSSQL", 1521: "Oracle", 3306: "MySQL",
+    3389: "RDP", 5432: "PostgreSQL", 5900: "VNC", 6379: "Redis",
+    27017: "MongoDB",
+}
 
 # Mapa de categorías de AbuseIPDB a nombres legibles
 ABUSE_CATEGORIES = {
@@ -478,6 +548,20 @@ def classify_risk(enriched_data):
             score += 5
             reasons.append(f"VirusTotal: {sus} vendors sospechoso")
 
+    # ── Shodan ────────────────────────────────────────────────
+    shodan = enriched_data.get("shodan", {})
+    if shodan and not shodan.get("error"):
+        ports = shodan.get("ports", [])
+        dangerous = [p for p in ports if p in DANGEROUS_PORTS]
+        if dangerous:
+            port_names = [f"{p}/{DANGEROUS_PORTS[p]}" for p in dangerous[:5]]
+            score += min(15, len(dangerous) * 5)
+            reasons.append(f"Puertos peligrosos abiertos: {', '.join(port_names)}")
+        vulns = shodan.get("vulns", [])
+        if vulns:
+            score += min(20, len(vulns) * 4)
+            reasons.append(f"Shodan: {len(vulns)} CVE(s) detectados")
+
     # ── IPinfo flags ──────────────────────────────────────────
     ipinfo = enriched_data.get("ipinfo", {})
     if ipinfo and not ipinfo.get("error"):
@@ -536,7 +620,7 @@ class IPEnricher:
         # Resultados en memoria: { "ip": { "abuseipdb":{...}, ... } }
         self.results = OrderedDict()
         # Contadores de peticiones (para info del usuario)
-        self.api_calls = {"abuseipdb": 0, "ipinfo": 0, "virustotal": 0, "rdns": 0}
+        self.api_calls = {"abuseipdb": 0, "ipinfo": 0, "virustotal": 0, "shodan": 0, "rdns": 0}
 
     def _has_key(self, key_name):
         """Comprueba si hay API key configurada para un servicio."""
@@ -661,6 +745,7 @@ class IPEnricher:
         apis.append("AbuseIPDB ✓" if self._has_key("abuseipdb_key") else "AbuseIPDB ✗")
         vt_available = self._has_key("virustotal_key") and self.cfg.get("virustotal_enabled")
         apis.append("VirusTotal → bajo demanda" if vt_available else "VirusTotal ✗")
+        apis.append("Shodan → bajo demanda" if self._has_key("shodan_key") else "Shodan ✗")
         print(f"  ⚡ APIs activas: {' · '.join(apis)}")
         print()
 
@@ -736,6 +821,39 @@ class IPEnricher:
         existing["virustotal"] = vt_data
 
         # Recalcular riesgo con los nuevos datos VT
+        existing["risk"] = classify_risk(existing)
+
+        # Persistir en cache y memoria
+        self.cache.set(ip, existing)
+        self.cache.save()
+        self.results[ip] = existing
+
+        # Devolver datos limpios (sin campos internos)
+        return {k: v for k, v in existing.items() if not k.startswith("_")}
+
+    def enrich_ip_shodan(self, ip):
+        """
+        Consulta solo Shodan para una IP específica (bajo demanda).
+        Actualiza los datos existentes, recalcula el riesgo y persiste en cache.
+
+        Devuelve el dict completo actualizado de la IP, o un dict con error.
+        """
+        if not self._has_key("shodan_key"):
+            return {"error": "no_key"}
+
+        # Cargar datos existentes de results o cache
+        existing = self.results.get(ip) or self.cache.get(ip)
+        if not existing:
+            existing = {"ip": ip}
+
+        # Consultar Shodan
+        shodan_data = query_shodan(ip, self.cfg["shodan_key"])
+        self.api_calls["shodan"] = self.api_calls.get("shodan", 0) + 1
+
+        # Actualizar solo el campo shodan
+        existing["shodan"] = shodan_data
+
+        # Recalcular riesgo con los nuevos datos
         existing["risk"] = classify_risk(existing)
 
         # Persistir en cache y memoria

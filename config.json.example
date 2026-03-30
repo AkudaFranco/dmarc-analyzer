@@ -6,6 +6,7 @@
     "abuseipdb_key":          "",
     "ipinfo_token":           "",
     "virustotal_key":         "",
+    "shodan_key":             "",
 
     "virustotal_enabled":     true,
     "rdns_enabled":           true,
@@ -18,5 +19,6 @@
 
     "delay_abuseipdb":        0.2,
     "delay_ipinfo":           0.1,
-    "delay_virustotal":       16
+    "delay_virustotal":       16,
+    "delay_shodan":           1
 }
