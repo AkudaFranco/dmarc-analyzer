@@ -1,0 +1,22 @@
+
+{
+    "_comment": "Configuración del módulo de enriquecimiento de IPs",
+    "_comment2": "Deja vacía una key para desactivar esa fuente",
+
+    "abuseipdb_key":          "",
+    "ipinfo_token":           "",
+    "virustotal_key":         "",
+
+    "virustotal_enabled":     true,
+    "rdns_enabled":           true,
+
+    "cache_enabled":          true,
+    "cache_file":             "ip_enrichment_cache.json",
+    "cache_ttl":              86400,
+
+    "abuseipdb_max_age_days": 90,
+
+    "delay_abuseipdb":        0.2,
+    "delay_ipinfo":           0.1,
+    "delay_virustotal":       16
+}

@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<feedback>
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>esa1.hc369-46.eu.iphmx.com</org_name>
+    <email>MAILER-DAEMON@esa1.hc369-46.eu.iphmx.com</email>
+    <extra_contact_info></extra_contact_info>
+    <report_id>8834d7$c77ef61=e25a338ef4b570a9@esa1.hc369-46.eu.iphmx.com</report_id>
+    <date_range>
+      <begin>1773788403</begin>
+      <end>1773874804</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>akuda.es</domain>
+    <adkim>r</adkim>
+    <aspf>r</aspf>
+    <p>quarantine</p>
+    <sp></sp>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>194.104.111.120</source_ip>
+      <count>1</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>fail</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>akuda.es</header_from>
+      <envelope_from>akuda.es</envelope_from>
+    </identifiers>
+    <auth_results>
+      <spf>
+        <domain>akuda.es</domain>
+        <scope>mfrom</scope>
+        <result>pass</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>

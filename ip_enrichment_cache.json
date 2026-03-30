@@ -1,0 +1,102 @@
+{
+  "194.104.109.120": {
+    "ip": "194.104.109.120",
+    "_enriched_at": "2026-03-30T12:20:16.766659+00:00",
+    "rdns": {
+      "hostname": "de-smtp-delivery-120.mimecast.com",
+      "error": ""
+    },
+    "ipinfo": {
+      "error": "no_requests"
+    },
+    "abuseipdb": {
+      "error": "no_requests"
+    },
+    "virustotal": {
+      "error": "no_requests"
+    },
+    "risk": {
+      "level": "low",
+      "score": 0,
+      "reasons": [
+        "Sin indicadores de riesgo detectados"
+      ]
+    },
+    "_ts": 1774873233.2443123
+  },
+  "194.104.111.120": {
+    "ip": "194.104.111.120",
+    "_enriched_at": "2026-03-30T12:20:33.244413+00:00",
+    "rdns": {
+      "hostname": "de-smtp-delivery-120.mimecast.com",
+      "error": ""
+    },
+    "ipinfo": {
+      "error": "no_requests"
+    },
+    "abuseipdb": {
+      "error": "no_requests"
+    },
+    "virustotal": {
+      "error": "no_requests"
+    },
+    "risk": {
+      "level": "low",
+      "score": 0,
+      "reasons": [
+        "Sin indicadores de riesgo detectados"
+      ]
+    },
+    "_ts": 1774873249.6678917
+  },
+  "52.212.19.177": {
+    "ip": "52.212.19.177",
+    "_enriched_at": "2026-03-30T12:20:49.667976+00:00",
+    "rdns": {
+      "hostname": "eu.cloud-sec-av.com",
+      "error": ""
+    },
+    "ipinfo": {
+      "error": "no_requests"
+    },
+    "abuseipdb": {
+      "error": "no_requests"
+    },
+    "virustotal": {
+      "error": "no_requests"
+    },
+    "risk": {
+      "level": "low",
+      "score": 0,
+      "reasons": [
+        "Sin indicadores de riesgo detectados"
+      ]
+    },
+    "_ts": 1774873266.247329
+  },
+  "82.223.190.18": {
+    "ip": "82.223.190.18",
+    "_enriched_at": "2026-03-30T12:21:06.247418+00:00",
+    "rdns": {
+      "hostname": "llsm061-a20.servidoresdns.net",
+      "error": ""
+    },
+    "ipinfo": {
+      "error": "no_requests"
+    },
+    "abuseipdb": {
+      "error": "no_requests"
+    },
+    "virustotal": {
+      "error": "no_requests"
+    },
+    "risk": {
+      "level": "low",
+      "score": 0,
+      "reasons": [
+        "Sin indicadores de riesgo detectados"
+      ]
+    },
+    "_ts": 1774873282.7150767
+  }
+}

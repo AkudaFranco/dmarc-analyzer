@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<feedback>
+  <report_metadata>
+    <org_name>Mimecast</org_name>
+    <email>no-reply@eu-2.mimecastreport.com</email>
+    <extra_contact_info>https://community.mimecast.com/s/knowledge</extra_contact_info>
+    <report_id>347d656125501d57c922fcfb9ea39cf0a6b80880aa20115f618a9c3c5579bf14</report_id>
+    <date_range>
+      <begin>1773878400</begin>
+      <end>1773964799</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>akuda.es</domain>
+    <adkim>r</adkim>
+    <aspf>r</aspf>
+    <p>quarantine</p>
+    <sp>quarantine</sp>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>194.104.111.120</source_ip>
+      <count>1</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>fail</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>akuda.es</header_from>
+    </identifiers>
+    <auth_results>
+      <spf>
+        <domain>akuda.es</domain>
+        <result>pass</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>
