@@ -556,13 +556,24 @@ class IPEnricher:
         # Intentar cache primero
         cached = self.cache.get(ip)
         if cached:
-            if skip_virustotal:
-                # Forzar que VT se muestre como "no consultado" para
-                # que el dashboard ofrezca el botón de consulta on-demand
-                cached["virustotal"] = {"error": "not_queried"}
-                cached["risk"] = classify_risk(cached)
-            self.results[ip] = cached
-            return cached
+            # Verificar si la cache tiene fuentes sin key que ahora sí están disponibles
+            needs_refresh = False
+            if (cached.get("abuseipdb", {}).get("error") == "no_key"
+                    and self._has_key("abuseipdb_key")):
+                needs_refresh = True
+            if (cached.get("ipinfo", {}).get("error") == "no_key"
+                    and self._has_key("ipinfo_token")):
+                needs_refresh = True
+
+            if not needs_refresh:
+                if skip_virustotal:
+                    # Forzar que VT se muestre como "no consultado" para
+                    # que el dashboard ofrezca el botón de consulta on-demand
+                    cached["virustotal"] = {"error": "not_queried"}
+                    cached["risk"] = classify_risk(cached)
+                self.results[ip] = cached
+                return cached
+            # Si needs_refresh, caer al flujo normal y re-consultar todas las fuentes
 
         result = {"ip": ip, "_enriched_at": datetime.now(timezone.utc).isoformat()}
 
