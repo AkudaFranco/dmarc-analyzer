@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: es
+reviews:
+  profile: chill
+  high_level_summary: true
+  poem: false
+  review_status: true
+  path_instructions:
+    - path: "tests/**"
+      instructions: "Verificar que los tests cubren edge cases de XML malformado y que no hacen peticiones reales a APIs externas."
+    - path: "dmarc_visualizer.py"
+      instructions: "Este es el módulo más crítico. Prestar atención especial a la función parse_dmarc_xml() y al manejo seguro de XML (XXE). Cualquier cambio en el parseo debe tener test asociado."
+    - path: "ip_enrichment.py"
+      instructions: "Verificar que hay rate limiting en todas las consultas a APIs. Las API keys nunca deben estar hardcodeadas. Verificar que el cache maneja errores correctamente."
+    - path: "config.json"
+      instructions: "ALERTA: Este archivo NO debería contener API keys reales. Verificar que las keys están vacías o que el archivo es config.json.example."
+  auto_review:
+    enabled: true
+    drafts: false
+chat:
+  auto_reply: true

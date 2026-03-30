@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<feedback>
+  <report_metadata>
+    <org_name>mimecast.com</org_name>
+    <report_id>mimecast-001</report_id>
+    <date_range>
+      <begin>1773705600</begin>
+      <end>1773791999</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>example.es</domain>
+    <p>none</p>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>194.104.111.120</source_ip>
+      <count>10</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>fail</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.es</header_from>
+    </identifiers>
+    <auth_results>
+      <spf>
+        <domain>example.es</domain>
+        <r>pass</r>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>
