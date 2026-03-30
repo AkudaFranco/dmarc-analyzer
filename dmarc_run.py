@@ -18,9 +18,10 @@ Requisitos:
     pip install requests openpyxl
 """
 
-import sys, json
+import sys, json, http.server, threading, webbrowser, time
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 # ── Importar los módulos hermanos ─────────────────────────────────
 # Asegurar que el directorio del script está en el path
@@ -30,7 +31,7 @@ if str(script_dir) not in sys.path:
 
 from dmarc_visualizer import (
     load_folder, compute_stats, generate_html,
-    init_excel, update_excel, serve_and_open, VERSION
+    init_excel, update_excel, find_port, VERSION
 )
 from ip_enrichment import IPEnricher, extract_ips_from_reports
 
@@ -133,6 +134,14 @@ def build_ip_panel_html(ip_enrichment_data):
 
 /* ── Country flag (emoji) ── */
 .cflag{{margin-right:3px}}
+
+/* ── Botón VT bajo demanda ── */
+.vt-demand-btn{{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.2);
+  color:var(--cy);font-family:var(--mono);font-size:11px;padding:10px 16px;
+  border-radius:8px;cursor:pointer;width:100%;transition:all .2s}}
+.vt-demand-btn:hover{{background:rgba(34,211,238,.15);border-color:rgba(34,211,238,.4);
+  box-shadow:0 0 12px rgba(34,211,238,.1)}}
+.vt-demand-btn:disabled{{cursor:wait;opacity:.6}}
 </style>
 
 <!-- Panel overlay -->
@@ -312,6 +321,26 @@ function openIPPanel(ip) {{
         `<span class="ipp-tag info">${{t}}</span>`).join('')}}</div>`;
     }}
     html+=`</div>`;
+  }} else if(vt.error==='not_queried' || vt.error==='disabled') {{
+    const btnId='vt-btn-'+ip.replace(/\\./g,'-');
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔬 Detecciones <span class="ipp-src">VirusTotal</span></div>
+      <div id="vt-status-${{btnId}}" style="text-align:center">
+        <button id="${{btnId}}" class="vt-demand-btn" onclick="queryVirusTotal('${{ip}}')">
+          🔬 Consultar VirusTotal
+        </button>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--mt);margin-top:6px">
+          Consulta bajo demanda (4 req/min)
+        </div>
+      </div>
+    </div>`;
+  }} else if(vt.error==='no_key') {{
+    html+=`<div class="ipp-section">
+      <div class="ipp-sec-title">🔬 Detecciones <span class="ipp-src">VirusTotal</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--mt);text-align:center;padding:8px">
+        Sin API key de VirusTotal configurada
+      </div>
+    </div>`;
   }}
 
   // ── Reverse DNS ──
@@ -330,6 +359,49 @@ function openIPPanel(ip) {{
 function closeIPPanel() {{
   $('ip-overlay').classList.remove('open');
   $('ip-panel').classList.remove('open');
+}}
+
+// ── Consulta VirusTotal bajo demanda ──
+function queryVirusTotal(ip) {{
+  const btnId='vt-btn-'+ip.replace(/\\./g,'-');
+  const btn=document.getElementById(btnId);
+  if(btn) {{
+    btn.disabled=true;
+    btn.textContent='Consultando...';
+    btn.style.opacity='0.6';
+  }}
+  fetch('/api/vt-lookup?ip='+encodeURIComponent(ip))
+    .then(r => {{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }})
+    .then(data => {{
+      if(data.error) {{
+        const statusEl=document.getElementById('vt-status-'+btnId);
+        let msg='Error al consultar VirusTotal';
+        if(data.error==='rate_limited') msg='Rate limited — espera 1 minuto e inténtalo de nuevo';
+        else if(data.error==='no_key') msg='Sin API key de VirusTotal configurada';
+        else if(data.error==='disabled') msg='VirusTotal desactivado en la configuración';
+        if(statusEl) statusEl.innerHTML=`<div style="color:var(--yw);font-family:var(--mono);font-size:10px;padding:8px">${{msg}}</div>`;
+        return;
+      }}
+      // Actualizar IP_DATA con los nuevos datos (incluye risk recalculado)
+      IP_DATA[ip]=data;
+      // Re-renderizar el panel para mostrar los datos VT
+      openIPPanel(ip);
+    }})
+    .catch(err => {{
+      if(btn) {{
+        btn.disabled=false;
+        btn.textContent='Error — Reintentar';
+        btn.style.opacity='1';
+      }}
+      const statusEl=document.getElementById('vt-status-'+btnId);
+      if(statusEl) {{
+        const hint=location.protocol==='file:'?'Ejecuta sin --no-open para consultas bajo demanda':'Servidor no disponible';
+        statusEl.innerHTML+=`<div style="color:var(--rd);font-family:var(--mono);font-size:9px;margin-top:4px">${{hint}}</div>`;
+      }}
+    }});
 }}
 
 // Helper para items del grid
@@ -426,6 +498,76 @@ def inject_ip_panel(html_content, ip_enrichment_data):
 
 
 # ══════════════════════════════════════════════════════════════════
+#  SERVIDOR LOCAL CON API VT ON-DEMAND
+# ══════════════════════════════════════════════════════════════════
+
+_vt_lock = threading.Lock()
+
+
+def serve_and_open_with_api(html_path, enricher):
+    """
+    Servidor HTTP local que sirve el dashboard y expone un endpoint
+    /api/vt-lookup?ip=X.X.X.X para consultas VirusTotal bajo demanda.
+    """
+    html_path = Path(html_path).resolve()
+    port = find_port()
+    if not port:
+        print(f"  ⚠  Sin puerto libre. Abre: file://{html_path}")
+        return
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(html_path.parent), **kw)
+
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/vt-lookup":
+                self._handle_vt_lookup(parse_qs(parsed.query))
+            else:
+                super().do_GET()
+
+        def _handle_vt_lookup(self, params):
+            ip = params.get("ip", [""])[0].strip()
+            if not ip:
+                self._json_response(400, {"error": "missing_ip"})
+                return
+
+            with _vt_lock:
+                result = enricher.enrich_ip_virustotal(ip)
+
+            self._json_response(200, result)
+
+        def _json_response(self, code, data):
+            body = json.dumps(
+                data, ensure_ascii=False, default=str
+            ).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{port}/{html_path.name}"
+    print(f"\n  🌐 Servidor : {url}")
+    print(f"  🔬 API VT   : {url.rsplit('/', 1)[0]}/api/vt-lookup?ip=<IP>")
+    print(f"  🔥 Abriendo navegador...\n")
+    time.sleep(0.3)
+    webbrowser.open(url)
+    print("  ✅ Dashboard activo. Presiona Ctrl+C para salir.\n")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n  Cerrando...")
+        srv.shutdown()
+
+
+# ══════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════
 
@@ -471,13 +613,14 @@ def main():
     print(f"     Dominios: {', '.join(stats['domains'].keys())}")
 
     # ── 4. Enriquecimiento de IPs ────────────────────────────
+    # Crear enricher siempre (necesario para VT on-demand desde el servidor)
+    config_path = Path(folder) / "config.json"
+    if not config_path.exists():
+        config_path = Path(script_dir) / "config.json"
+    enricher = IPEnricher(str(config_path))
+
     ip_enrichment_data = {}
     if not no_enrich:
-        config_path = Path(folder) / "config.json"
-        if not config_path.exists():
-            config_path = Path(script_dir) / "config.json"
-
-        enricher = IPEnricher(str(config_path))
         ips = extract_ips_from_reports(all_reports)
         enricher.enrich_all(ips)
         ip_enrichment_data = enricher.get_serializable()
@@ -506,8 +649,9 @@ def main():
 
     if no_open:
         print(f"\n  Abre manualmente: file://{out.resolve()}")
+        print(f"  ⚠  VT bajo demanda no disponible sin servidor (--no-open)")
     else:
-        serve_and_open(out)
+        serve_and_open_with_api(out, enricher)
 
 
 if __name__ == "__main__":

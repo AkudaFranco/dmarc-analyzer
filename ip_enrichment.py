@@ -542,10 +542,14 @@ class IPEnricher:
         """Comprueba si hay API key configurada para un servicio."""
         return bool(self.cfg.get(key_name, "").strip())
 
-    def enrich_ip(self, ip):
+    def enrich_ip(self, ip, skip_virustotal=False):
         """
         Enriquece una única IP consultando todas las fuentes activas.
         Usa cache si hay datos válidos. Respeta rate limits.
+
+        Args:
+            ip: Dirección IP a enriquecer.
+            skip_virustotal: Si True, no consulta VirusTotal (se hará bajo demanda).
 
         Devuelve el dict completo de la IP.
         """
@@ -592,7 +596,9 @@ class IPEnricher:
             result["abuseipdb"] = {"error": "no_key"}
 
         # ── 4. VirusTotal ─────────────────────────────────────
-        if self._has_key("virustotal_key") and self.cfg.get("virustotal_enabled", True):
+        if skip_virustotal:
+            result["virustotal"] = {"error": "not_queried"}
+        elif self._has_key("virustotal_key") and self.cfg.get("virustotal_enabled", True):
             vt_data = query_virustotal(ip, self.cfg["virustotal_key"])
             result["virustotal"] = vt_data
             self.api_calls["virustotal"] += 1
@@ -637,13 +643,9 @@ class IPEnricher:
         apis.append("rDNS" if self.cfg.get("rdns_enabled") else "rDNS ✗")
         apis.append("IPinfo" + (" (token)" if self._has_key("ipinfo_token") else " (free)"))
         apis.append("AbuseIPDB ✓" if self._has_key("abuseipdb_key") else "AbuseIPDB ✗")
-        vt_on = self._has_key("virustotal_key") and self.cfg.get("virustotal_enabled")
-        apis.append("VirusTotal ✓" if vt_on else "VirusTotal ✗")
+        vt_available = self._has_key("virustotal_key") and self.cfg.get("virustotal_enabled")
+        apis.append("VirusTotal → bajo demanda" if vt_available else "VirusTotal ✗")
         print(f"  ⚡ APIs activas: {' · '.join(apis)}")
-
-        if to_fetch > 0 and vt_on:
-            est_time = to_fetch * self.cfg.get("delay_virustotal", 16)
-            print(f"  ⏱  Tiempo estimado: ~{est_time//60}m {est_time%60}s (VirusTotal limita a 4 req/min)")
         print()
 
         for i, ip in enumerate(public_ips, 1):
@@ -651,7 +653,7 @@ class IPEnricher:
             tag = "CACHE" if cached else "API"
             print(f"  [{i}/{total}] {ip:<20} [{tag}] ", end="", flush=True)
 
-            data = self.enrich_ip(ip)
+            data = self.enrich_ip(ip, skip_virustotal=True)
 
             # Mostrar resumen rápido
             risk = data.get("risk", {})
@@ -692,6 +694,41 @@ class IPEnricher:
             clean = {k: v for k, v in data.items() if not k.startswith("_")}
             out[ip] = clean
         return out
+
+    def enrich_ip_virustotal(self, ip):
+        """
+        Consulta solo VirusTotal para una IP específica (bajo demanda).
+        Actualiza los datos existentes, recalcula el riesgo y persiste en cache.
+
+        Devuelve el dict completo actualizado de la IP, o un dict con error.
+        """
+        if not self._has_key("virustotal_key"):
+            return {"error": "no_key"}
+        if not self.cfg.get("virustotal_enabled", True):
+            return {"error": "disabled"}
+
+        # Cargar datos existentes de results o cache
+        existing = self.results.get(ip) or self.cache.get(ip)
+        if not existing:
+            existing = {"ip": ip}
+
+        # Consultar VirusTotal
+        vt_data = query_virustotal(ip, self.cfg["virustotal_key"])
+        self.api_calls["virustotal"] += 1
+
+        # Actualizar solo el campo virustotal
+        existing["virustotal"] = vt_data
+
+        # Recalcular riesgo con los nuevos datos VT
+        existing["risk"] = classify_risk(existing)
+
+        # Persistir en cache y memoria
+        self.cache.set(ip, existing)
+        self.cache.save()
+        self.results[ip] = existing
+
+        # Devolver datos limpios (sin campos internos)
+        return {k: v for k, v in existing.items() if not k.startswith("_")}
 
     def save_cache(self):
         """Persiste la cache a disco."""
