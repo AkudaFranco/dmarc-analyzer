@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<feedback>
+  <report_metadata>
+    <org_name>broken.com</org_name>
+    <!-- Missing closing tags and invalid structure -->
+    <date_range>
+      <begin>not_a_number</begin>
+    </date_range>
+  </report_metadata>
+  <!-- Missing policy_published entirely -->
+  <record>
+    <row>
+      <!-- Missing source_ip -->
+      <count>0</count>
+      <!-- Missing policy_evaluated -->
+    </row>
+  </record>
+</feedback>

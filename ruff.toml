@@ -1,0 +1,12 @@
+# Configuración de Ruff para el proyecto DMARC Analyzer
+# Los archivos legacy (dmarc_visualizer.py, ip_enrichment.py, dmarc_run.py)
+# se excluyen temporalmente hasta que se refactoricen.
+
+[lint]
+select = ["E", "F", "W"]
+
+exclude = [
+    "dmarc_visualizer.py",
+    "ip_enrichment.py",
+    "dmarc_run.py",
+]
