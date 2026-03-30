@@ -372,3 +372,4 @@ class TestDMARCLogic:
         assert rec["spf_result"] == "fail"
         assert rec["dmarc_result"] == "fail"
         assert rec["alignment"] == "fail"
+        

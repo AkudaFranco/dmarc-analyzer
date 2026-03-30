@@ -194,3 +194,4 @@ class TestComputeStatsEdgeCases:
         stats = compute_stats([report])
         assert stats["total_reports"] == 1
         assert stats["total_messages"] == 0
+        
